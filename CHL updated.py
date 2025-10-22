@@ -1,4 +1,5 @@
 # app.py
+import base64
 import numpy as np
 import streamlit as st
 import cv2
@@ -11,78 +12,108 @@ st.set_page_config(page_title="LOOCV & RGB Analyzer", page_icon="🧪", layout="
 
 # ---------- Sidebar controls ----------
 st.sidebar.header("🎨 Background Mode")
-bg_mode = st.sidebar.selectbox("Select background type:", ["Solid ocean blue", "Photo", "Video"], index=2)
+bg_mode = st.sidebar.selectbox(
+    "Select background type:",
+    ["Solid ocean blue", "Photo URL", "Upload photo", "Video URL", "Upload video"],
+    index=0
+)
 
-# Defaults
+# Defaults for URL modes
 photo_url_default = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e"
 video_url_default = "https://cdn.coverr.co/videos/coverr-ocean-waves-1536/1080p.mp4"
 
-if bg_mode == "Photo":
+photo_url = None
+video_url = None
+photo_b64 = None
+video_b64 = None
+photo_mime = "image/jpeg"   # fallback
+
+# ---------- Inputs depending on mode ----------
+if bg_mode == "Photo URL":
     photo_url = st.sidebar.text_input("Photo URL", value=photo_url_default)
-elif bg_mode == "Video":
+
+elif bg_mode == "Video URL":
     video_url = st.sidebar.text_input("Video MP4 URL", value=video_url_default)
+
+elif bg_mode == "Upload photo":
+    up_img = st.sidebar.file_uploader("Upload background image", type=["jpg", "jpeg", "png"])
+    if up_img is not None:
+        photo_mime = up_img.type or "image/jpeg"
+        img_bytes = up_img.read()
+        photo_b64 = base64.b64encode(img_bytes).decode()
+
+elif bg_mode == "Upload video":
+    up_vid = st.sidebar.file_uploader("Upload background video (MP4 recommended, keep small)", type=["mp4", "webm", "ogg"])
+    if up_vid is not None:
+        video_mime = up_vid.type or "video/mp4"
+        vid_bytes = up_vid.read()
+        video_b64 = base64.b64encode(vid_bytes).decode()
+        # Build a data URL
+        video_url = f"data:{video_mime};base64,{video_b64}"
 
 # ---------- Inject CSS / HTML for backgrounds ----------
 if bg_mode == "Solid ocean blue":
     st.markdown("""
     <style>
-    .main {
-        background-color: #0077be !important; /* Bright ocean blue */
-    }
-    [data-testid="stSidebar"] {
-        background-color: #0a2f47;
-    }
+    .main { background-color: #0077be !important; }  /* Ocean blue */
+    [data-testid="stSidebar"] { background-color: #0a2f47; }
     </style>
     """, unsafe_allow_html=True)
 
-elif bg_mode == "Photo":
-    st.markdown(f"""
-    <style>
-    .main {{
-        background: url("{photo_url}") no-repeat center center fixed !important;
-        background-size: cover !important;
-    }}
-    .main::before {{
-        content:"";
-        position: fixed; inset: 0;
-        background: rgba(0, 60, 100, 0.45);
-        z-index: -1;
-    }}
-    [data-testid="stSidebar"] {{
-        background-color: rgba(10, 47, 71, 0.85);
-    }}
-    </style>
-    """, unsafe_allow_html=True)
+elif bg_mode in ["Photo URL", "Upload photo"]:
+    # Resolve the background image source
+    if bg_mode == "Photo URL" and photo_url:
+        bg_image = photo_url
+    elif bg_mode == "Upload photo" and photo_b64:
+        bg_image = f"data:{photo_mime};base64,{photo_b64}"
+    else:
+        bg_image = ""  # nothing yet
 
-elif bg_mode == "Video":
-    st.markdown("""
-    <style>
-    video.bgvid {
-      position: fixed;
-      right: 0;
-      bottom: 0;
-      min-width: 100%;
-      min-height: 100%;
-      z-index: -1;
-      object-fit: cover;
-      filter: brightness(0.8) saturate(1.2);
-    }
-    .main::before {
-      content:"";
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 40, 70, 0.45);
-      z-index: -1;
-    }
-    [data-testid="stSidebar"] {
-      background-color: rgba(10, 47, 71, 0.8);
-    }
-    </style>
+    if bg_image:
+        st.markdown(f"""
+        <style>
+        .main {{
+            background: url("{bg_image}") no-repeat center center fixed !important;
+            background-size: cover !important;
+        }}
+        .main::before {{
+            content:"";
+            position: fixed; inset: 0;
+            background: rgba(0, 60, 100, 0.45); /* blue tint overlay for readability */
+            z-index: -1;
+        }}
+        [data-testid="stSidebar"] {{
+            background-color: rgba(10, 47, 71, 0.85);
+        }}
+        </style>
+        """, unsafe_allow_html=True)
 
-    <video class="bgvid" autoplay loop muted playsinline>
-        <source src="https://cdn.coverr.co/videos/coverr-ocean-waves-1536/1080p.mp4" type="video/mp4">
-    </video>
-    """, unsafe_allow_html=True)
+elif bg_mode in ["Video URL", "Upload video"]:
+    # Use video_url either from URL input or base64 data URL
+    if video_url:
+        st.markdown(f"""
+        <style>
+        video.bgvid {{
+          position: fixed; right: 0; bottom: 0;
+          min-width: 100%; min-height: 100%;
+          z-index: -1; object-fit: cover;
+          filter: brightness(0.8) saturate(1.15);
+        }}
+        .main::before {{
+          content:""; position: fixed; inset: 0;
+          background: rgba(0, 40, 70, 0.45); z-index: -1;
+        }}
+        [data-testid="stSidebar"] {{
+          background-color: rgba(10, 47, 71, 0.8);
+        }}
+        </style>
+
+        <video class="bgvid" autoplay loop muted playsinline>
+            <source src="{video_url}" type="video/mp4">
+        </video>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("Upload a video or provide a valid MP4 URL to enable the background video.")
 
 # ---------- App Title ----------
 st.title("🌊 Machine Learning & Image RGB Analyzer")
@@ -126,12 +157,12 @@ with tab2:
     y_pred = cross_val_predict(model, X, y, cv=loo)
 
     mse = mean_squared_error(y, y_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y, y_pred)
+    rmse = float(np.sqrt(mse))
+    r2 = float(r2_score(y, y_pred))
 
     n, p = X.shape
-    r2_adj = 1 - (1 - r2) * (n - 1) / (n - p - 1) if n > p + 1 else np.nan
-    rrmse = (rmse / np.ptp(y) * 100) if np.ptp(y) > 0 else np.nan
+    r2_adj = 1 - (1 - r2) * (n - 1) / (n - p - 1) if n > p + 1 else float("nan")
+    rrmse = (rmse / np.ptp(y) * 100) if np.ptp(y) > 0 else float("nan")
 
     st.subheader("Actual vs Predicted (Leave-One-Out Cross Validation)")
     for actual, pred in zip(y, y_pred):
@@ -140,10 +171,10 @@ with tab2:
     st.subheader("Model Performance Metrics")
     metric_card("RMSE", f"{rmse:.3f}", "Root Mean Square Error")
     metric_card("R²", f"{r2:.3f}", "Coefficient of Determination")
-    metric_card("Adjusted R²", f"{r2_adj:.3f}", "Penalty for small sample size")
-    metric_card("Relative RMSE", f"{rrmse:.2f}%", "RMSE ÷ range × 100")
+    metric_card("Adjusted R²", f"{r2_adj:.3f}" if r2_adj==r2_adj else "N/A", "Penalty for small sample size")
+    metric_card("Relative RMSE", f"{rrmse:.2f}%" if rrmse==rrmse else "N/A", "RMSE ÷ range × 100")
 
-    st.info("⚠️ Only 6 samples used (R,G fixed). Add more varied samples for better calibration accuracy.")
+    st.info("⚠️ Only 6 samples used (R,G fixed). Add more varied samples and replicates for better calibration.")
 
     st.subheader("Predict New Sample")
     colr, colg, colb = st.columns(3)
